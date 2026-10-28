@@ -1,0 +1,62 @@
+{{- $ctx := dict "root" . "component" "result" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: result
+  labels:
+    {{- include "voting-app.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.result.replicas }}
+  strategy:
+    {{- include "voting-app.rollingUpdate" . | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.labels" $ctx | nindent 8 }}
+    spec:
+      securityContext:
+        {{- include "voting-app.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: result
+          image: {{ include "voting-app.image" (dict "root" . "repository" .Values.result.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "voting-app.dbClientEnv" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.result.resources | nindent 12 }}
+          securityContext:
+            {{- include "voting-app.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: result
+  labels:
+    {{- include "voting-app.labels" $ctx | nindent 4 }}
+spec:
+  type: {{ .Values.result.service.type }}
+  selector:
+    {{- include "voting-app.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.result.service.port }}
+      targetPort: http

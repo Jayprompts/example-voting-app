@@ -1,0 +1,40 @@
+{{- $ctx := dict "root" . "component" "worker" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    {{- include "voting-app.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  strategy:
+    {{- include "voting-app.rollingUpdate" . | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.labels" $ctx | nindent 8 }}
+    spec:
+      securityContext:
+        {{- include "voting-app.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "voting-app.image" (dict "root" . "repository" .Values.worker.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "voting-app.dbClientEnv" . | nindent 12 }}
+            # .NET otherwise creates a debugging socket on disk, which a read-only filesystem doesn't allow
+            - name: DOTNET_EnableDiagnostics
+              value: "0"
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            {{- include "voting-app.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

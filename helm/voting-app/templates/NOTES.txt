@@ -1,0 +1,20 @@
+Voting app release "{{ .Release.Name }}" (revision {{ .Release.Revision }}) is deployed.
+Images: {{ .Values.image.registry }}/voting-app-*:{{ .Values.image.tag }}
+
+Watch the pods:
+  kubectl get pods --namespace {{ .Release.Namespace }}
+
+{{- if eq .Values.vote.service.type "LoadBalancer" }}
+
+Public addresses (can take 2-3 minutes to appear):
+  kubectl get svc vote result --namespace {{ .Release.Namespace }}
+{{- else }}
+
+Open the pages locally:
+  kubectl port-forward svc/vote 8080:{{ .Values.vote.service.port }} --namespace {{ .Release.Namespace }}
+  kubectl port-forward svc/result 8081:{{ .Values.result.service.port }} --namespace {{ .Release.Namespace }}
+{{- end }}
+
+Release history and rollback:
+  helm history {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+  helm rollback {{ .Release.Name }} <revision> --namespace {{ .Release.Namespace }}

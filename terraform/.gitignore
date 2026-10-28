@@ -1,0 +1,17 @@
+# provider downloads
+.terraform/
+
+# state holds real resource IDs and can hold secrets; never commit it
+*.tfstate
+*.tfstate.*
+crash.log
+
+# local overrides may hold account-specific values
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# keep .terraform.lock.hcl committed so everyone gets the same provider versions

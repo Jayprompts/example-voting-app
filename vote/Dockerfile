@@ -15,8 +15,10 @@ RUN groupadd --system --gid 10001 app && \
 WORKDIR /usr/local/app
 
 # Install our requirements.txt
+# (setuptools ships with the base image and bundles outdated libraries, so bring it up to date)
 COPY requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade setuptools && \
+    pip install --no-cache-dir -r requirements.txt
 
 # dev defines a stage for development, where it'll watch for filesystem changes
 FROM base AS dev

@@ -1,0 +1,64 @@
+{{- $ctx := dict "root" . "component" "vote" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vote
+  labels:
+    {{- include "voting-app.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ .Values.vote.replicas }}
+  strategy:
+    {{- include "voting-app.rollingUpdate" . | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.labels" $ctx | nindent 8 }}
+    spec:
+      securityContext:
+        {{- include "voting-app.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: vote
+          image: {{ include "voting-app.image" (dict "root" . "repository" .Values.vote.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            # gunicorn writes small files to its home folder and /tmp; both are in-memory below
+            - name: HOME
+              value: /tmp
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.vote.resources | nindent 12 }}
+          securityContext:
+            {{- include "voting-app.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vote
+  labels:
+    {{- include "voting-app.labels" $ctx | nindent 4 }}
+spec:
+  type: {{ .Values.vote.service.type }}
+  selector:
+    {{- include "voting-app.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.vote.service.port }}
+      targetPort: http

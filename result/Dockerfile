@@ -17,6 +17,10 @@ RUN npm ci && \
  npm cache clean --force && \
  mv /usr/local/app/node_modules /node_modules
 
+# npm is only needed to install packages, not to run the app; removing it drops its bundled CVEs
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
 COPY . .
 
 # Non-root users can't bind ports below 1024, so the app listens on 8080

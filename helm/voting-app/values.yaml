@@ -1,0 +1,58 @@
+# Our three app images live in GHCR as <registry>/voting-app-<service>:<tag>.
+# The pipeline sets image.tag to the commit SHA on every deploy.
+image:
+  registry: ghcr.io/jayprompts
+  tag: ""
+  pullPolicy: IfNotPresent
+
+vote:
+  replicas: 2
+  repository: voting-app-vote
+  # LoadBalancer gives the page a public address on EKS
+  service:
+    type: LoadBalancer
+    port: 80
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+result:
+  # one replica: the live-updating page uses websockets, which would need sticky sessions across replicas
+  replicas: 1
+  repository: voting-app-result
+  service:
+    type: LoadBalancer
+    port: 80
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+worker:
+  replicas: 1
+  repository: voting-app-worker
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+redis:
+  image: redis:8.10.3-alpine3.23@sha256:896f241f438ab6a210cfb24f573b84bea721a4cbe67f1b4fd07eb638b3b02a7b
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 128Mi }
+
+db:
+  image: postgres:15.19-alpine@sha256:54e0dd8e8cddcdbb9156c2486eed5a43eccb7214d7c6828097d41ce049fb3984
+  auth:
+    username: postgres
+    database: postgres
+    # Never put a real password here. The pipeline passes it from the POSTGRES_PASSWORD
+    # GitHub secret with --set-string db.auth.password=...
+    password: ""
+  persistence:
+    enabled: true
+    # gp2 is the EBS storage class that comes with EKS (served by the EBS CSI add-on in our Terraform)
+    storageClassName: gp2
+    size: 1Gi
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }

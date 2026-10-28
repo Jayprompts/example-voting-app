@@ -1,0 +1,164 @@
+# One push to main: test -> build -> Trivy scan -> push (tagged with the commit SHA) -> deploy with Helm.
+# Pull requests run the test, build and scan, but never push or deploy.
+# Third-party actions are pinned to full commit SHAs (tags can be moved; commits can't).
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TRIVY_VERSION: v0.76.1
+  HELM_VERSION: v4.3.1
+
+jobs:
+  test:
+    name: End-to-end test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build vote
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./vote
+          load: true
+          tags: voting-app/vote:test
+          cache-from: type=gha,scope=vote
+          cache-to: type=gha,scope=vote,mode=max
+
+      - name: Build result
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./result
+          load: true
+          tags: voting-app/result:test
+          cache-from: type=gha,scope=result
+          cache-to: type=gha,scope=result,mode=max
+
+      - name: Build worker
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./worker
+          load: true
+          tags: voting-app/worker:test
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
+
+      - name: Start the stack
+        run: docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --wait
+
+      - name: Run end-to-end test
+        run: ./tests/e2e.sh
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.test.yml down -v
+
+  build-scan-push:
+    name: Build, scan and push (${{ matrix.service }})
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [vote, result, worker]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set image name
+        # GHCR needs a lowercase owner name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/voting-app-${{ matrix.service }}:${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./${{ matrix.service }}
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.IMAGE }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+
+      - name: Trivy scan (fail on fixable HIGH or CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        run: docker push "$IMAGE"
+
+  deploy:
+    name: Deploy to EKS with Helm
+    needs: build-scan-push
+    # switched on once the cluster exists: set repository variable DEPLOY_ENABLED=true
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # lets GitHub prove its identity to AWS, so no AWS keys are stored in GitHub
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Log in to AWS
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Point kubectl at the cluster
+        run: aws eks update-kubeconfig --region "${{ vars.AWS_REGION }}" --name "${{ vars.EKS_CLUSTER_NAME }}"
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Helm upgrade
+        env:
+          # stored encrypted in GitHub (Settings > Secrets > Actions), never in Git
+          DB_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          helm upgrade --install voting-app ./helm/voting-app \
+            --namespace voting-app --create-namespace \
+            -f ./helm/voting-app/values.yaml \
+            --set image.registry="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" \
+            --set image.tag="${{ github.sha }}" \
+            --set-string db.auth.password="$DB_PASSWORD" \
+            --wait --timeout 5m
+
+      - name: Show release
+        run: |
+          helm history voting-app --namespace voting-app --max 5
+          kubectl get pods --namespace voting-app

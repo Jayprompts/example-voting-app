@@ -17,9 +17,9 @@ io.on('connection', function (socket) {
   });
 });
 
-var pool = new Pool({
-  connectionString: 'postgres://postgres:postgres@db/postgres'
-});
+// connection details come from the standard PGHOST, PGUSER, PGPASSWORD and PGDATABASE
+// environment variables, so no password lives in the code
+var pool = new Pool();
 
 async.retry(
   {times: 1000, interval: 1000},

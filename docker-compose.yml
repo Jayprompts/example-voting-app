@@ -28,6 +28,12 @@ services:
     build: ./result
     # use nodemon rather than node for local dev
     entrypoint: nodemon --inspect=0.0.0.0 server.js
+    environment: &db-client-env
+      # local development credentials only; in Kubernetes these come from a Secret
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
     depends_on:
       db:
         condition: service_healthy 
@@ -43,6 +49,7 @@ services:
   worker:
     build:
       context: ./worker
+    environment: *db-client-env
     depends_on:
       redis:
         condition: service_healthy 

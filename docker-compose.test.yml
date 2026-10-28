@@ -1,0 +1,23 @@
+# Test override: runs the production images (not the dev setup) for the end-to-end test.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --wait
+#   ./tests/e2e.sh
+# Image names default to local builds; CI passes the images it just built.
+
+services:
+  vote:
+    image: ${VOTE_IMAGE:-voting-app/vote:test}
+    build: !reset null
+    volumes: !reset []
+
+  result:
+    image: ${RESULT_IMAGE:-voting-app/result:test}
+    build: !reset null
+    entrypoint: !reset null
+    volumes: !reset []
+    ports: !override
+      - "8081:8080"
+
+  worker:
+    image: ${WORKER_IMAGE:-voting-app/worker:test}
+    build: !reset null
