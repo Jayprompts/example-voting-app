@@ -1,0 +1,44 @@
+flowchart LR
+    dev([Developer]) -->|git push to main| gha
+
+    subgraph github[GitHub]
+        gha[GitHub Actions<br/>1. end-to-end test<br/>2. build images<br/>3. Trivy scan<br/>4. push, tagged with commit SHA<br/>5. helm upgrade]
+        ghcr[(GHCR<br/>voting-app-vote / result / worker)]
+        secrets[[Secret: POSTGRES_PASSWORD]]
+        gha -->|push images| ghcr
+        secrets -.-> gha
+    end
+
+    tf[Terraform<br/>terraform/] -->|creates| aws
+
+    subgraph aws[AWS account]
+        iam[IAM<br/>cluster, node, EBS and<br/>GitHub deploy roles]
+        oidc[GitHub OIDC provider]
+        subgraph vpc[Default VPC]
+            subgraph eks[EKS cluster 1.36, 2 x t3.large nodes]
+                subgraph ns[namespace: voting-app, deployed by one Helm chart]
+                    vote[vote<br/>Python, 2 pods]
+                    result[result<br/>Node.js]
+                    worker[worker<br/>.NET]
+                    redis[(Redis<br/>queue)]
+                    db[(PostgreSQL<br/>StatefulSet)]
+                end
+            end
+            lbv[Load balancer :80]
+            lbr[Load balancer :80]
+        end
+        ebs[(EBS volume)]
+    end
+
+    gha -->|OIDC login, no stored AWS keys| oidc
+    oidc --> iam
+    gha -->|helm upgrade --install| ns
+    ghcr -->|nodes pull images| eks
+
+    voter([Voter]) --> lbv --> vote
+    viewer([Viewer]) --> lbr --> result
+    vote -->|LPUSH vote| redis
+    worker -->|pop vote| redis
+    worker -->|insert or update| db
+    result -->|read totals| db
+    db --- ebs

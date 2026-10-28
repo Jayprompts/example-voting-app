@@ -40,3 +40,15 @@ variable "node_max_size" {
   type        = number
   default     = 3
 }
+
+variable "github_repository" {
+  description = "GitHub repository (owner/name) whose main branch may deploy to the cluster"
+  type        = string
+  default     = "Jayprompts/example-voting-app"
+}
+
+variable "create_github_oidc_provider" {
+  description = "Create the GitHub OIDC provider; set false if the AWS account already has one"
+  type        = bool
+  default     = true
+}
