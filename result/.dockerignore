@@ -1,1 +1,9 @@
+# keep the build context small and leave out files the image doesn't need
 node_modules/
+tests/
+docker-compose*.yml
+Dockerfile
+.dockerignore
+.git
+npm-debug.log
+*.md

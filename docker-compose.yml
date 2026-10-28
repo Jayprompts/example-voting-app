@@ -11,7 +11,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck: 
-      test: ["CMD", "curl", "-f", "http://localhost"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -19,7 +19,7 @@ services:
     volumes:
      - ./vote:/usr/local/app
     ports:
-      - "8080:80"
+      - "8080:8080"
     networks:
       - front-tier
       - back-tier
@@ -34,7 +34,7 @@ services:
     volumes:
       - ./result:/usr/local/app
     ports:
-      - "8081:80"
+      - "8081:8080"
       - "127.0.0.1:9229:9229"
     networks:
       - front-tier
@@ -52,7 +52,7 @@ services:
       - back-tier
 
   redis:
-    image: redis:alpine
+    image: redis:8.10.3-alpine3.23@sha256:896f241f438ab6a210cfb24f573b84bea721a4cbe67f1b4fd07eb638b3b02a7b
     volumes:
       - "./healthchecks:/healthchecks"
     healthcheck:
@@ -62,7 +62,7 @@ services:
       - back-tier
 
   db:
-    image: postgres:15-alpine
+    image: postgres:15.19-alpine@sha256:54e0dd8e8cddcdbb9156c2486eed5a43eccb7214d7c6828097d41ce049fb3984
     environment:
       POSTGRES_USER: "postgres"
       POSTGRES_PASSWORD: "postgres"

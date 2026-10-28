@@ -1,0 +1,8 @@
+# keep the build context small and leave out files the image doesn't need
+Dockerfile
+.dockerignore
+.git
+.venv
+__pycache__/
+*.pyc
+*.md

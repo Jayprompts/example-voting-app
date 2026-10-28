@@ -1,5 +1,5 @@
 # because of dotnet, we always build on amd64, and target platforms in cli
-# dotnet doesn't support QEMU for building or running. 
+# dotnet doesn't support QEMU for building or running.
 # (errors common in arm/v7 32bit) https://github.com/dotnet/dotnet-docker/issues/1537
 # https://hub.docker.com/_/microsoft-dotnet
 # hadolint ignore=DL3029
@@ -8,7 +8,8 @@
 # docker buildx build --platform "linux/arm64/v8" .
 
 # build compiles the program for the builder's local platform
-FROM --platform=${BUILDPLATFORM} mcr.microsoft.com/dotnet/sdk:7.0 AS build
+# pinned to an exact version and digest (.NET 10 LTS; .NET 7 is end-of-life)
+FROM --platform=${BUILDPLATFORM} mcr.microsoft.com/dotnet/sdk:10.0.403@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS build
 ARG TARGETPLATFORM
 ARG TARGETARCH
 ARG BUILDPLATFORM
@@ -22,7 +23,9 @@ COPY . .
 RUN dotnet publish -c release -o /app -a $TARGETARCH --self-contained false --no-restore
 
 # app image
-FROM mcr.microsoft.com/dotnet/runtime:7.0
+FROM mcr.microsoft.com/dotnet/runtime:10.0.14@sha256:a3f9f81954b9c810af2ed18849716c8dc74a4707bd0907fdbd69be81554c0f30
 WORKDIR /app
 COPY --from=build /app .
+# run as the image's built-in unprivileged "app" user (uid 1654)
+USER 1654
 ENTRYPOINT ["dotnet", "Worker.dll"]

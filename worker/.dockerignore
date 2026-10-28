@@ -1,0 +1,7 @@
+# keep the build context small and leave out files the image doesn't need
+bin/
+obj/
+Dockerfile
+.dockerignore
+.git
+*.md
